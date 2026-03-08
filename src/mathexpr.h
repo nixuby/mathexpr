@@ -1,4 +1,4 @@
-// "mathexpr" v0.1 (c) 2026 Nixuby (https://nixuby.com)
+// "mathexpr" v0.2 (c) 2026 Nixuby (https://nixuby.com)
 // License: MIT (https://opensource.org/license/MIT)
 // Math expression evaluation library
 // C++20, header-only, no dependencies
@@ -495,6 +495,10 @@ namespace mathexpr {
             std::ranges::remove_if(symbols_, [&](Symbol const& sym) { return get_symbol_name(sym) == name; });
         }
 
+        // Evaluate an expression
+        // To improve performance for repeated evaluations,
+        // compile it first with `compile()` and then call
+        // `evaluate()` on the resulting `Expression` object
         [[nodiscard]]
         Number evaluate(std::string_view input) const {
             using namespace detail;
@@ -504,6 +508,9 @@ namespace mathexpr {
             return execute(bytecode, symbols_);
         }
 
+        // Compile an expression for efficient repeated evaluation
+        // This call does not execute the expression,
+        // Call `evaluate()` on the resulting `Expression` object to execute it
         [[nodiscard]]
         Expression compile(std::string_view input) const;
 
