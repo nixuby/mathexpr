@@ -1,4 +1,4 @@
-// "mathexpr" v0.2 (c) 2026 Nixuby (https://nixuby.com)
+// "mathexpr" v0.3 (c) 2026 Nixuby (https://nixuby.com)
 // License: MIT (https://opensource.org/license/MIT)
 // Math expression evaluation library
 // C++20, header-only, no dependencies
@@ -20,9 +20,9 @@
 
 namespace mathexpr {
     namespace version {
-        inline int constexpr ID = 1;
+        inline int constexpr ID = 2;
         inline int constexpr MAJOR = 0;
-        inline int constexpr MINOR = 2;
+        inline int constexpr MINOR = 3;
         inline int constexpr PATCH = 0;
     }
 
