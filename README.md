@@ -43,4 +43,3 @@ int main() {
 
 - Boolean logic: `true`, `false`, operators `&&`, `||`, `!`, comparison operators `==`, `!=`, `<`, `>`, `<=`, `>=`, ternary operator `? :`
 - Bitwise operators: `&`, `|`, `^`, `~`, `<<`, `>>`
-- Precompile expressions for better evaluation performance
