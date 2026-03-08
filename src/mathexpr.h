@@ -420,6 +420,8 @@ namespace mathexpr {
             define("floor", [](Number x) { return std::floor(x); });
             define("ceil", [](Number x) { return std::ceil(x); });
             define("round", [](Number x) { return std::round(x); });
+            define("deg2rad", [](Number x) { return x * std::numbers::pi / 180; });
+            define("rad2deg", [](Number x) { return x * 180 / std::numbers::pi; });
 
             // Binary functions
             define("pow", [](Number a, Number b) { return std::pow(a, b); });
