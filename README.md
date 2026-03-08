@@ -38,8 +38,3 @@ int main() {
 
 - `evaluate()` throws `std::runtime_error` on parse/evaluation errors
 - Exponentiation is done right-to-left (i.e. `2^3^4 == 2^(3^4)`)
-
-## Todo
-
-- Boolean logic: `true`, `false`, operators `&&`, `||`, `!`, comparison operators `==`, `!=`, `<`, `>`, `<=`, `>=`, ternary operator `? :`
-- Bitwise operators: `&`, `|`, `^`, `~`, `<<`, `>>`
