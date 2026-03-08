@@ -20,9 +20,9 @@
 
 namespace mathexpr {
     namespace version {
-        inline int constexpr ID = 0;
+        inline int constexpr ID = 1;
         inline int constexpr MAJOR = 0;
-        inline int constexpr MINOR = 1;
+        inline int constexpr MINOR = 2;
         inline int constexpr PATCH = 0;
     }
 
@@ -137,71 +137,7 @@ namespace mathexpr {
             symbol);
     }
 
-    // Context for expression evaluation and symbol management
-    class Context {
-    public:
-        explicit Context(bool should_define_builtins = true) {
-            if (should_define_builtins) {
-                define_builtins();
-            }
-        }
-
-        // Define a new variable or update an existing one
-        void define(std::string name, Number value) {
-            for (auto& sym : symbols_) {
-                if (auto* var = std::get_if<Variable>(&sym)) {
-                    if (var->get_name() == name) {
-                        var->set_value(value);
-                        return;
-                    }
-                }
-            }
-            symbols_.push_back(Variable(std::move(name), value));
-        }
-
-        // Define a new function or update an existing one
-        template <class F>
-            requires requires { detail::arity<std::decay_t<F>>::value; }
-        void define(std::string name, F&& f) {
-            constexpr std::size_t N = detail::arity<std::decay_t<F>>::value;
-            static_assert(N <= 5, "Functions with more than 5 arguments are not supported");
-            for (auto& sym : symbols_) {
-                if (auto* func = std::get_if<Function<N>>(&sym)) {
-                    if (func->get_name() == name) {
-                        func->set_function(std::forward<F>(f));
-                        return;
-                    }
-                }
-            }
-            symbols_.push_back(Function<N>(std::move(name), std::forward<F>(f)));
-        }
-
-        // Undefine a symbol by name
-        void undefine(std::string_view name) {
-            std::ranges::remove_if(symbols_, [&](Symbol const& sym) { return get_symbol_name(sym) == name; });
-        }
-
-        [[nodiscard]]
-        Number evaluate(std::string_view input) const {
-            thread_local static std::vector<Token> tokens;
-            tokens.clear();
-            tokenize(tokens, input);
-            Parser parser(tokens, symbols_);
-            return parser.parse();
-        }
-
-        std::vector<Symbol> const& get_symbols() const { return symbols_; }
-
-        Symbol const& get_symbol(std::string_view name) const {
-            for (auto const& sym : symbols_) {
-                if (get_symbol_name(sym) == name) {
-                    return sym;
-                }
-            }
-            throw std::runtime_error("Unknown symbol: '" + std::string(name) + "'");
-        }
-
-    private:
+    namespace detail {
         enum class TokenType { NumberLiteral, Identifier, Plus, Minus, Star, Slash, Caret, LParen, RParen, Comma, End };
 
         struct Token {
@@ -210,142 +146,8 @@ namespace mathexpr {
             Number value = 0;
         };
 
-        class Parser {
-        public:
-            explicit Parser(std::vector<Token> const& tokens, std::vector<Symbol> const& symbols)
-                : tokens_(tokens), symbols_(symbols) {}
-
-            Token const& peek() const { return tokens_[pos_]; }
-            Token const& advance() { return tokens_[pos_++]; }
-            bool match(TokenType t) {
-                if (peek().type == t) {
-                    advance();
-                    return true;
-                }
-                return false;
-            }
-            void expect(TokenType t, char const* msg) {
-                if (!match(t)) throw std::runtime_error(msg);
-            }
-
-            Number parse() {
-                auto result = expression();
-                if (peek().type != TokenType::End) throw std::runtime_error("Unexpected token: '" + peek().text + "'");
-                return result;
-            }
-
-            Number expression() {
-                auto left = term();
-                while (peek().type == TokenType::Plus || peek().type == TokenType::Minus) {
-                    if (advance().type == TokenType::Plus) left += term();
-                    else left -= term();
-                }
-                return left;
-            }
-
-            Number term() {
-                auto left = exponent();
-                while (peek().type == TokenType::Star || peek().type == TokenType::Slash) {
-                    if (advance().type == TokenType::Star) left *= exponent();
-                    else left /= exponent();
-                }
-                return left;
-            }
-
-            Number exponent() {
-                auto base = unary();
-                if (match(TokenType::Caret)) return std::pow(base, exponent());  // recurse for right-associativity
-                return base;
-            }
-
-            Number unary() {
-                if (peek().type == TokenType::Minus) {
-                    advance();
-                    return -unary();
-                }
-                if (peek().type == TokenType::Plus) {
-                    advance();
-                    return unary();
-                }
-                return primary();
-            }
-
-            Number primary() {
-                if (peek().type == TokenType::NumberLiteral) return advance().value;
-                if (peek().type == TokenType::Identifier) {
-                    auto name = advance().text;
-                    if (peek().type == TokenType::LParen) {
-                        advance();
-                        std::vector<Number> args;
-                        if (peek().type != TokenType::RParen) {
-                            args.push_back(expression());
-                            while (match(TokenType::Comma)) args.push_back(expression());
-                        }
-                        expect(TokenType::RParen, "Expected ')'");
-                        return call_function(name, args);
-                    }
-                    return lookup_variable(name);
-                }
-                if (peek().type == TokenType::LParen) {
-                    advance();
-                    auto result = expression();
-                    expect(TokenType::RParen, "Expected ')'");
-                    return result;
-                }
-                throw std::runtime_error("Unexpected token: '" + peek().text + "'");
-            }
-
-            Number lookup_variable(std::string const& name) const {
-                for (auto const& sym : symbols_) {
-                    std::string const& sym_name = get_symbol_name(sym);
-                    if (sym_name == name) {
-                        if (auto* var = std::get_if<Variable>(&sym)) {
-                            return var->get_value();
-                        } else {
-                            throw std::runtime_error("Symbol '" + name + "' is a function");
-                        }
-                    }
-                }
-                throw std::runtime_error("Unknown variable: '" + name + "'");
-            }
-
-            Number call_function(std::string const& name, std::vector<Number> const& args) const {
-                for (auto const& sym : symbols_) {
-                    std::string const& sym_name = get_symbol_name(sym);
-                    if (sym_name != name) continue;
-
-                    char constexpr VAR = 0x0;
-                    char constexpr FUNC = 0x1;
-                    char constexpr NONE = 0x2;
-
-                    auto result = std::visit(
-                        [&](auto const& s) -> std::pair<char, Number> {
-                            using T = std::decay_t<decltype(s)>;
-                            if constexpr (std::is_same_v<T, Variable>) {
-                                return { VAR, 0 };
-                            } else {
-                                if (s.get_name() == name) return { FUNC, s.call(args) };
-                                return { NONE, 0 };
-                            }
-                        },
-                        sym);
-
-                    if (result.first == FUNC) {
-                        return result.second;
-                    } else if (result.first == VAR) {
-                        throw std::runtime_error("Symbol '" + name + "' is not callable");
-                    }
-                }
-                throw std::runtime_error("Unknown function: '" + name + "'");
-            }
-
-        private:
-            std::vector<Token> const& tokens_;
-            std::vector<Symbol> const& symbols_;
-            std::size_t pos_ = 0;
-        };
-
-        static void tokenize(std::vector<Token>& tokens, std::string_view input) {
+        inline std::vector<Token> tokenize(std::string_view input) {
+            std::vector<Token> tokens;
             std::size_t i = 0;
             while (i < input.size()) {
                 if (std::isspace(static_cast<unsigned char>(input[i]))) {
@@ -403,41 +205,375 @@ namespace mathexpr {
                 ++i;
             }
             tokens.push_back({ TokenType::End, "" });
+            return tokens;
         }
 
+        // Bytecode types
+        enum class OpCode {
+            PushConst,  // Push constants[operand] onto stack
+            LoadVar,    // Push value of variable at symbols[operand]
+            CallFunc,   // Call function at symbols[operand] with operand2 args from stack
+            Add,
+            Sub,
+            Mul,
+            Div,
+            Pow,
+            Neg,  // Negate top of stack
+        };
+
+        struct Instruction {
+            OpCode op;
+            std::size_t operand = 0;
+            std::size_t operand2 = 0;
+        };
+
+        struct ByteCode {
+            std::vector<Instruction> instructions;
+            std::vector<Number> constants;
+        };
+
+        // Compiles tokens into bytecode by recursive descent
+        class Compiler {
+        public:
+            explicit Compiler(std::vector<Token> const& tokens, std::vector<Symbol> const& symbols)
+                : tokens_(tokens), symbols_(symbols) {}
+
+            ByteCode compile() {
+                expression();
+                if (peek().type != TokenType::End) throw std::runtime_error("Unexpected token: '" + peek().text + "'");
+                return { std::move(instructions_), std::move(constants_) };
+            }
+
+        private:
+            Token const& peek() const { return tokens_[pos_]; }
+            Token const& advance() { return tokens_[pos_++]; }
+            bool match(TokenType t) {
+                if (peek().type == t) {
+                    advance();
+                    return true;
+                }
+                return false;
+            }
+            void expect(TokenType t, char const* msg) {
+                if (!match(t)) throw std::runtime_error(msg);
+            }
+
+            void emit(OpCode op, std::size_t operand = 0, std::size_t operand2 = 0) {
+                instructions_.push_back({ op, operand, operand2 });
+            }
+
+            std::size_t add_constant(Number value) {
+                constants_.push_back(value);
+                return constants_.size() - 1;
+            }
+
+            std::size_t find_symbol(std::string const& name) const {
+                for (std::size_t i = 0; i < symbols_.size(); ++i) {
+                    if (get_symbol_name(symbols_[i]) == name) return i;
+                }
+                throw std::runtime_error("Unknown symbol: '" + name + "'");
+            }
+
+            void expression() {
+                term();
+                while (peek().type == TokenType::Plus || peek().type == TokenType::Minus) {
+                    auto op = advance().type;
+                    term();
+                    emit(op == TokenType::Plus ? OpCode::Add : OpCode::Sub);
+                }
+            }
+
+            void term() {
+                exponent();
+                while (peek().type == TokenType::Star || peek().type == TokenType::Slash) {
+                    auto op = advance().type;
+                    exponent();
+                    emit(op == TokenType::Star ? OpCode::Mul : OpCode::Div);
+                }
+            }
+
+            void exponent() {
+                unary();
+                if (match(TokenType::Caret)) {
+                    exponent();
+                    emit(OpCode::Pow);
+                }
+            }
+
+            void unary() {
+                if (peek().type == TokenType::Minus) {
+                    advance();
+                    unary();
+                    emit(OpCode::Neg);
+                    return;
+                }
+                if (peek().type == TokenType::Plus) {
+                    advance();
+                    unary();
+                    return;
+                }
+                primary();
+            }
+
+            void primary() {
+                if (peek().type == TokenType::NumberLiteral) {
+                    emit(OpCode::PushConst, add_constant(advance().value));
+                    return;
+                }
+                if (peek().type == TokenType::Identifier) {
+                    auto name = advance().text;
+                    if (peek().type == TokenType::LParen) {
+                        advance();
+                        std::size_t argc = 0;
+                        if (peek().type != TokenType::RParen) {
+                            expression();
+                            ++argc;
+                            while (match(TokenType::Comma)) {
+                                expression();
+                                ++argc;
+                            }
+                        }
+                        expect(TokenType::RParen, "Expected ')'");
+                        emit(OpCode::CallFunc, find_symbol(name), argc);
+                        return;
+                    }
+                    emit(OpCode::LoadVar, find_symbol(name));
+                    return;
+                }
+                if (peek().type == TokenType::LParen) {
+                    advance();
+                    expression();
+                    expect(TokenType::RParen, "Expected ')'");
+                    return;
+                }
+                throw std::runtime_error("Unexpected token: '" + peek().text + "'");
+            }
+
+            std::vector<Token> const& tokens_;
+            std::vector<Symbol> const& symbols_;
+            std::size_t pos_ = 0;
+            std::vector<Instruction> instructions_;
+            std::vector<Number> constants_;
+        };
+
+        // Execute bytecode against a symbol table using a stack-based VM
+        inline Number execute(ByteCode const& code, std::vector<Symbol> const& symbols) {
+            std::vector<Number> stack;
+            stack.reserve(16);
+
+            for (auto const& instr : code.instructions) {
+                switch (instr.op) {
+                    case OpCode::PushConst:
+                        stack.push_back(code.constants[instr.operand]);
+                        break;
+                    case OpCode::LoadVar: {
+                        auto const& sym = symbols[instr.operand];
+                        if (auto* var = std::get_if<Variable>(&sym)) {
+                            stack.push_back(var->get_value());
+                        } else {
+                            throw std::runtime_error("Symbol '" + get_symbol_name(sym) + "' is a function");
+                        }
+                        break;
+                    }
+                    case OpCode::CallFunc: {
+                        auto const& sym = symbols[instr.operand];
+                        auto argc = instr.operand2;
+                        std::vector<Number> args(stack.end() - static_cast<std::ptrdiff_t>(argc), stack.end());
+                        stack.resize(stack.size() - argc);
+                        auto result = std::visit(
+                            [&](auto const& s) -> Number {
+                                using T = std::decay_t<decltype(s)>;
+                                if constexpr (std::is_same_v<T, Variable>) {
+                                    throw std::runtime_error("Symbol '" + s.get_name() + "' is not callable");
+                                } else {
+                                    return s.call(args);
+                                }
+                            },
+                            sym);
+                        stack.push_back(result);
+                        break;
+                    }
+                    case OpCode::Add: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() += b;
+                        break;
+                    }
+                    case OpCode::Sub: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() -= b;
+                        break;
+                    }
+                    case OpCode::Mul: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() *= b;
+                        break;
+                    }
+                    case OpCode::Div: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() /= b;
+                        break;
+                    }
+                    case OpCode::Pow: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() = std::pow(stack.back(), b);
+                        break;
+                    }
+                    case OpCode::Neg:
+                        stack.back() = -stack.back();
+                        break;
+                }
+            }
+            return stack.back();
+        }
+    }
+
+    class Expression;
+
+    // Context for expression evaluation and symbol management
+    class Context {
+    public:
+        explicit Context(bool should_define_builtins = true) {
+            if (should_define_builtins) {
+                define_builtins();
+            }
+        }
+
+        // Define a new variable or update an existing one
+        void define(std::string name, Number value) {
+            for (auto& sym : symbols_) {
+                if (auto* var = std::get_if<Variable>(&sym)) {
+                    if (var->get_name() == name) {
+                        var->set_value(value);
+                        return;
+                    }
+                }
+            }
+            symbols_.push_back(Variable(std::move(name), value));
+        }
+
+        // Define a new function or update an existing one
+        // Deduces the number of function arguments from the type of the callable
+        template <class F>
+            requires requires { detail::arity<std::decay_t<F>>::value; }
+        void define(std::string name, F&& f) {
+            constexpr std::size_t N = detail::arity<std::decay_t<F>>::value;
+            static_assert(N <= 5, "Functions with more than 5 arguments are not supported");
+            for (auto& sym : symbols_) {
+                if (auto* func = std::get_if<Function<N>>(&sym)) {
+                    if (func->get_name() == name) {
+                        func->set_function(std::forward<F>(f));
+                        return;
+                    }
+                }
+            }
+            symbols_.push_back(Function<N>(std::move(name), std::forward<F>(f)));
+        }
+
+        // Define a new function or update an existing one
+        // Explicit number of function arguments, allows for `auto` parameters in lambdas
+        template <std::size_t N>
+        void define(std::string name, typename Function<N>::Callback function) {
+            static_assert(N <= 5, "Functions with more than 5 arguments are not supported");
+            for (auto& sym : symbols_) {
+                if (auto* func = std::get_if<Function<N>>(&sym)) {
+                    if (func->get_name() == name) {
+                        func->set_function(std::move(function));
+                        return;
+                    }
+                }
+            }
+            symbols_.push_back(Function<N>(std::move(name), std::move(function)));
+        }
+
+        // Undefine a symbol by name
+        void undefine(std::string_view name) {
+            std::ranges::remove_if(symbols_, [&](Symbol const& sym) { return get_symbol_name(sym) == name; });
+        }
+
+        [[nodiscard]]
+        Number evaluate(std::string_view input) const {
+            using namespace detail;
+            std::vector<Token> tokens = tokenize(input);
+            Compiler compiler(tokens, symbols_);
+            ByteCode bytecode = compiler.compile();
+            return execute(bytecode, symbols_);
+        }
+
+        [[nodiscard]]
+        Expression compile(std::string_view input) const;
+
+        std::vector<Symbol> const& get_symbols() const { return symbols_; }
+
+        Symbol const& get_symbol(std::string_view name) const {
+            for (auto const& sym : symbols_) {
+                if (get_symbol_name(sym) == name) {
+                    return sym;
+                }
+            }
+            throw std::runtime_error("Unknown symbol: '" + std::string(name) + "'");
+        }
+
+    private:
         void define_builtins() {
             // Constants
             define("pi", std::numbers::pi);
             define("e", std::numbers::e);
 
             // Unary functions
-            define("sin", [](Number x) { return std::sin(x); });
-            define("cos", [](Number x) { return std::cos(x); });
-            define("tan", [](Number x) { return std::tan(x); });
-            define("asin", [](Number x) { return std::asin(x); });
-            define("acos", [](Number x) { return std::acos(x); });
-            define("atan", [](Number x) { return std::atan(x); });
-            define("sqrt", [](Number x) { return std::sqrt(x); });
-            define("cbrt", [](Number x) { return std::cbrt(x); });
-            define("abs", [](Number x) { return std::abs(x); });
-            define("ln", [](Number x) { return std::log(x); });
-            define("log2", [](Number x) { return std::log2(x); });
-            define("log10", [](Number x) { return std::log10(x); });
-            define("exp", [](Number x) { return std::exp(x); });
-            define("floor", [](Number x) { return std::floor(x); });
-            define("ceil", [](Number x) { return std::ceil(x); });
-            define("round", [](Number x) { return std::round(x); });
-            define("deg2rad", [](Number x) { return x * std::numbers::pi / 180; });
-            define("rad2deg", [](Number x) { return x * 180 / std::numbers::pi; });
+            define<1>("sin", [](auto x) { return std::sin(x); });
+            define<1>("cos", [](auto x) { return std::cos(x); });
+            define<1>("tan", [](auto x) { return std::tan(x); });
+            define<1>("asin", [](auto x) { return std::asin(x); });
+            define<1>("acos", [](auto x) { return std::acos(x); });
+            define<1>("atan", [](auto x) { return std::atan(x); });
+            define<1>("sqrt", [](auto x) { return std::sqrt(x); });
+            define<1>("cbrt", [](auto x) { return std::cbrt(x); });
+            define<1>("abs", [](auto x) { return std::abs(x); });
+            define<1>("ln", [](auto x) { return std::log(x); });
+            define<1>("log2", [](auto x) { return std::log2(x); });
+            define<1>("log10", [](auto x) { return std::log10(x); });
+            define<1>("exp", [](auto x) { return std::exp(x); });
+            define<1>("floor", [](auto x) { return std::floor(x); });
+            define<1>("ceil", [](auto x) { return std::ceil(x); });
+            define<1>("round", [](auto x) { return std::round(x); });
+            define<1>("deg2rad", [](auto x) { return x * std::numbers::pi / 180; });
+            define<1>("rad2deg", [](auto x) { return x * 180 / std::numbers::pi; });
 
             // Binary functions
-            define("pow", [](Number a, Number b) { return std::pow(a, b); });
-            define("atan2", [](Number y, Number x) { return std::atan2(y, x); });
-            define("min", [](Number a, Number b) { return std::min(a, b); });
-            define("max", [](Number a, Number b) { return std::max(a, b); });
-            define("log", [](Number base, Number x) { return std::log(x) / std::log(base); });
+            define<2>("pow", [](auto a, auto b) { return std::pow(a, b); });
+            define<2>("atan2", [](auto y, auto x) { return std::atan2(y, x); });
+            define<2>("min", [](auto a, auto b) { return std::min(a, b); });
+            define<2>("max", [](auto a, auto b) { return std::max(a, b); });
+            define<2>("log", [](auto base, auto x) { return std::log(x) / std::log(base); });
         }
 
         std::vector<Symbol> symbols_;
     };
+
+    class Expression {
+    public:
+        explicit Expression(Context const& context, std::string_view input) : context_(context) {
+            auto tokens = detail::tokenize(input);
+            detail::Compiler compiler(tokens, context.get_symbols());
+            bytecode_ = compiler.compile();
+        }
+
+        [[nodiscard]]
+        Number evaluate() const {
+            return detail::execute(bytecode_, context_.get_symbols());
+        }
+
+    private:
+        Context const& context_;
+        detail::ByteCode bytecode_;
+    };
+
+    inline Expression Context::compile(std::string_view input) const {
+        return Expression(*this, input);
+    }
 }
