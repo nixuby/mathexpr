@@ -26,7 +26,7 @@ int main() {
 	ctx.define("x", 3.0);
 	std::cout << ctx.evaluate("2 + x") << "\n"; // 5
 
-	ctx.define("fun", [](mathexpr::Number a, mathexpr::Number b, mathexpr::Number c) {
+	ctx.define<3>("fun", [](auto a, auto b, auto c) {
 		return a + b - c;
 	});
 	std::cout << ctx.evaluate("fun(1, 2, 4)") << "\n";     // -1
