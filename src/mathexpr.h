@@ -20,9 +20,9 @@
 
 namespace mathexpr {
     namespace version {
-        inline int constexpr ID = 0;
+        inline int constexpr ID = 1;
         inline int constexpr MAJOR = 0;
-        inline int constexpr MINOR = 1;
+        inline int constexpr MINOR = 2;
         inline int constexpr PATCH = 0;
     }
 
