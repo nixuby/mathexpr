@@ -160,6 +160,7 @@ namespace mathexpr {
         }
 
         // Define a new function or update an existing one
+        // Deduces the number of function arguments from the type of the callable
         template <class F>
             requires requires { detail::arity<std::decay_t<F>>::value; }
         void define(std::string name, F&& f) {
@@ -174,6 +175,22 @@ namespace mathexpr {
                 }
             }
             symbols_.push_back(Function<N>(std::move(name), std::forward<F>(f)));
+        }
+
+        // Define a new function or update an existing one
+        // Explicit number of function arguments, allows for `auto` parameters in lambdas
+        template <std::size_t N>
+        void define(std::string name, typename Function<N>::Callback function) {
+            static_assert(N <= 5, "Functions with more than 5 arguments are not supported");
+            for (auto& sym : symbols_) {
+                if (auto* func = std::get_if<Function<N>>(&sym)) {
+                    if (func->get_name() == name) {
+                        func->set_function(std::move(function));
+                        return;
+                    }
+                }
+            }
+            symbols_.push_back(Function<N>(std::move(name), std::move(function)));
         }
 
         // Undefine a symbol by name
@@ -411,31 +428,31 @@ namespace mathexpr {
             define("e", std::numbers::e);
 
             // Unary functions
-            define("sin", [](Number x) { return std::sin(x); });
-            define("cos", [](Number x) { return std::cos(x); });
-            define("tan", [](Number x) { return std::tan(x); });
-            define("asin", [](Number x) { return std::asin(x); });
-            define("acos", [](Number x) { return std::acos(x); });
-            define("atan", [](Number x) { return std::atan(x); });
-            define("sqrt", [](Number x) { return std::sqrt(x); });
-            define("cbrt", [](Number x) { return std::cbrt(x); });
-            define("abs", [](Number x) { return std::abs(x); });
-            define("ln", [](Number x) { return std::log(x); });
-            define("log2", [](Number x) { return std::log2(x); });
-            define("log10", [](Number x) { return std::log10(x); });
-            define("exp", [](Number x) { return std::exp(x); });
-            define("floor", [](Number x) { return std::floor(x); });
-            define("ceil", [](Number x) { return std::ceil(x); });
-            define("round", [](Number x) { return std::round(x); });
-            define("deg2rad", [](Number x) { return x * std::numbers::pi / 180; });
-            define("rad2deg", [](Number x) { return x * 180 / std::numbers::pi; });
+            define<1>("sin", [](auto x) { return std::sin(x); });
+            define<1>("cos", [](auto x) { return std::cos(x); });
+            define<1>("tan", [](auto x) { return std::tan(x); });
+            define<1>("asin", [](auto x) { return std::asin(x); });
+            define<1>("acos", [](auto x) { return std::acos(x); });
+            define<1>("atan", [](auto x) { return std::atan(x); });
+            define<1>("sqrt", [](auto x) { return std::sqrt(x); });
+            define<1>("cbrt", [](auto x) { return std::cbrt(x); });
+            define<1>("abs", [](auto x) { return std::abs(x); });
+            define<1>("ln", [](auto x) { return std::log(x); });
+            define<1>("log2", [](auto x) { return std::log2(x); });
+            define<1>("log10", [](auto x) { return std::log10(x); });
+            define<1>("exp", [](auto x) { return std::exp(x); });
+            define<1>("floor", [](auto x) { return std::floor(x); });
+            define<1>("ceil", [](auto x) { return std::ceil(x); });
+            define<1>("round", [](auto x) { return std::round(x); });
+            define<1>("deg2rad", [](auto x) { return x * std::numbers::pi / 180; });
+            define<1>("rad2deg", [](auto x) { return x * 180 / std::numbers::pi; });
 
             // Binary functions
-            define("pow", [](Number a, Number b) { return std::pow(a, b); });
-            define("atan2", [](Number y, Number x) { return std::atan2(y, x); });
-            define("min", [](Number a, Number b) { return std::min(a, b); });
-            define("max", [](Number a, Number b) { return std::max(a, b); });
-            define("log", [](Number base, Number x) { return std::log(x) / std::log(base); });
+            define<2>("pow", [](auto a, auto b) { return std::pow(a, b); });
+            define<2>("atan2", [](auto y, auto x) { return std::atan2(y, x); });
+            define<2>("min", [](auto a, auto b) { return std::min(a, b); });
+            define<2>("max", [](auto a, auto b) { return std::max(a, b); });
+            define<2>("log", [](auto base, auto x) { return std::log(x) / std::log(base); });
         }
 
         std::vector<Symbol> symbols_;
