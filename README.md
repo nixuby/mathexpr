@@ -42,4 +42,3 @@ int main() {
 ## Todo
 
 - Boolean logic: `true`, `false`, operators `&&`, `||`, `!`, comparison operators `==`, `!=`, `<`, `>`, `<=`, `>=`, ternary operator `? :`
-- Bitwise operators: `&`, `|`, `^`, `~`, `<<`, `>>`
