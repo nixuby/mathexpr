@@ -344,6 +344,8 @@ namespace mathexpr {
         }
     }
 
+    class Expression;
+
     // Context for expression evaluation and symbol management
     class Context {
     public:
@@ -413,6 +415,9 @@ namespace mathexpr {
             return parser.parse();
         }
 
+        [[nodiscard]]
+        Expression compile(std::string_view input) const;
+
         std::vector<Symbol> const& get_symbols() const { return symbols_; }
 
         Symbol const& get_symbol(std::string_view name) const {
@@ -460,4 +465,24 @@ namespace mathexpr {
 
         std::vector<Symbol> symbols_;
     };
+
+    class Expression {
+    public:
+        explicit Expression(Context const& context, std::string_view input)
+            : context_(context), tokens_(detail::tokenize(input)) {}
+
+        [[nodiscard]]
+        Number evaluate() const {
+            detail::Parser parser(tokens_, context_.get_symbols());
+            return parser.parse();
+        }
+
+    private:
+        Context const& context_;
+        std::vector<detail::Token> tokens_;
+    };
+
+    inline Expression Context::compile(std::string_view input) const {
+        return Expression(*this, input);
+    }
 }
