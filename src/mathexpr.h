@@ -137,88 +137,7 @@ namespace mathexpr {
             symbol);
     }
 
-    // Context for expression evaluation and symbol management
-    class Context {
-    public:
-        explicit Context(bool should_define_builtins = true) {
-            if (should_define_builtins) {
-                define_builtins();
-            }
-        }
-
-        // Define a new variable or update an existing one
-        void define(std::string name, Number value) {
-            for (auto& sym : symbols_) {
-                if (auto* var = std::get_if<Variable>(&sym)) {
-                    if (var->get_name() == name) {
-                        var->set_value(value);
-                        return;
-                    }
-                }
-            }
-            symbols_.push_back(Variable(std::move(name), value));
-        }
-
-        // Define a new function or update an existing one
-        // Deduces the number of function arguments from the type of the callable
-        template <class F>
-            requires requires { detail::arity<std::decay_t<F>>::value; }
-        void define(std::string name, F&& f) {
-            constexpr std::size_t N = detail::arity<std::decay_t<F>>::value;
-            static_assert(N <= 5, "Functions with more than 5 arguments are not supported");
-            for (auto& sym : symbols_) {
-                if (auto* func = std::get_if<Function<N>>(&sym)) {
-                    if (func->get_name() == name) {
-                        func->set_function(std::forward<F>(f));
-                        return;
-                    }
-                }
-            }
-            symbols_.push_back(Function<N>(std::move(name), std::forward<F>(f)));
-        }
-
-        // Define a new function or update an existing one
-        // Explicit number of function arguments, allows for `auto` parameters in lambdas
-        template <std::size_t N>
-        void define(std::string name, typename Function<N>::Callback function) {
-            static_assert(N <= 5, "Functions with more than 5 arguments are not supported");
-            for (auto& sym : symbols_) {
-                if (auto* func = std::get_if<Function<N>>(&sym)) {
-                    if (func->get_name() == name) {
-                        func->set_function(std::move(function));
-                        return;
-                    }
-                }
-            }
-            symbols_.push_back(Function<N>(std::move(name), std::move(function)));
-        }
-
-        // Undefine a symbol by name
-        void undefine(std::string_view name) {
-            std::ranges::remove_if(symbols_, [&](Symbol const& sym) { return get_symbol_name(sym) == name; });
-        }
-
-        [[nodiscard]]
-        Number evaluate(std::string_view input) const {
-            thread_local static std::vector<Token> tokens;
-            tokens.clear();
-            tokenize(tokens, input);
-            Parser parser(tokens, symbols_);
-            return parser.parse();
-        }
-
-        std::vector<Symbol> const& get_symbols() const { return symbols_; }
-
-        Symbol const& get_symbol(std::string_view name) const {
-            for (auto const& sym : symbols_) {
-                if (get_symbol_name(sym) == name) {
-                    return sym;
-                }
-            }
-            throw std::runtime_error("Unknown symbol: '" + std::string(name) + "'");
-        }
-
-    private:
+    namespace detail {
         enum class TokenType { NumberLiteral, Identifier, Plus, Minus, Star, Slash, Caret, LParen, RParen, Comma, End };
 
         struct Token {
@@ -362,7 +281,8 @@ namespace mathexpr {
             std::size_t pos_ = 0;
         };
 
-        static void tokenize(std::vector<Token>& tokens, std::string_view input) {
+        inline std::vector<Token> tokenize(std::string_view input) {
+            std::vector<Token> tokens;
             std::size_t i = 0;
             while (i < input.size()) {
                 if (std::isspace(static_cast<unsigned char>(input[i]))) {
@@ -420,8 +340,91 @@ namespace mathexpr {
                 ++i;
             }
             tokens.push_back({ TokenType::End, "" });
+            return tokens;
+        }
+    }
+
+    // Context for expression evaluation and symbol management
+    class Context {
+    public:
+        explicit Context(bool should_define_builtins = true) {
+            if (should_define_builtins) {
+                define_builtins();
+            }
         }
 
+        // Define a new variable or update an existing one
+        void define(std::string name, Number value) {
+            for (auto& sym : symbols_) {
+                if (auto* var = std::get_if<Variable>(&sym)) {
+                    if (var->get_name() == name) {
+                        var->set_value(value);
+                        return;
+                    }
+                }
+            }
+            symbols_.push_back(Variable(std::move(name), value));
+        }
+
+        // Define a new function or update an existing one
+        // Deduces the number of function arguments from the type of the callable
+        template <class F>
+            requires requires { detail::arity<std::decay_t<F>>::value; }
+        void define(std::string name, F&& f) {
+            constexpr std::size_t N = detail::arity<std::decay_t<F>>::value;
+            static_assert(N <= 5, "Functions with more than 5 arguments are not supported");
+            for (auto& sym : symbols_) {
+                if (auto* func = std::get_if<Function<N>>(&sym)) {
+                    if (func->get_name() == name) {
+                        func->set_function(std::forward<F>(f));
+                        return;
+                    }
+                }
+            }
+            symbols_.push_back(Function<N>(std::move(name), std::forward<F>(f)));
+        }
+
+        // Define a new function or update an existing one
+        // Explicit number of function arguments, allows for `auto` parameters in lambdas
+        template <std::size_t N>
+        void define(std::string name, typename Function<N>::Callback function) {
+            static_assert(N <= 5, "Functions with more than 5 arguments are not supported");
+            for (auto& sym : symbols_) {
+                if (auto* func = std::get_if<Function<N>>(&sym)) {
+                    if (func->get_name() == name) {
+                        func->set_function(std::move(function));
+                        return;
+                    }
+                }
+            }
+            symbols_.push_back(Function<N>(std::move(name), std::move(function)));
+        }
+
+        // Undefine a symbol by name
+        void undefine(std::string_view name) {
+            std::ranges::remove_if(symbols_, [&](Symbol const& sym) { return get_symbol_name(sym) == name; });
+        }
+
+        [[nodiscard]]
+        Number evaluate(std::string_view input) const {
+            using namespace detail;
+            std::vector<Token> tokens = tokenize(input);
+            Parser parser(tokens, symbols_);
+            return parser.parse();
+        }
+
+        std::vector<Symbol> const& get_symbols() const { return symbols_; }
+
+        Symbol const& get_symbol(std::string_view name) const {
+            for (auto const& sym : symbols_) {
+                if (get_symbol_name(sym) == name) {
+                    return sym;
+                }
+            }
+            throw std::runtime_error("Unknown symbol: '" + std::string(name) + "'");
+        }
+
+    private:
         void define_builtins() {
             // Constants
             define("pi", std::numbers::pi);
