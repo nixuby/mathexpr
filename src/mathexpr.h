@@ -27,6 +27,7 @@ namespace mathexpr {
     }
 
     using Number = double;  // Type used for numbers in expressions
+    using Int = long long;  // Type used for bitwise operations
 
     namespace detail {
         template <std::size_t>
@@ -138,7 +139,25 @@ namespace mathexpr {
     }
 
     namespace detail {
-        enum class TokenType { NumberLiteral, Identifier, Plus, Minus, Star, Slash, Caret, LParen, RParen, Comma, End };
+        enum class TokenType {
+            NumberLiteral,
+            Identifier,
+            Plus,
+            Minus,
+            Star,
+            StarStar,
+            Slash,
+            Caret,
+            Ampersand,
+            Pipe,
+            Tilde,
+            LShift,
+            RShift,
+            LParen,
+            RParen,
+            Comma,
+            End
+        };
 
         struct Token {
             TokenType type;
@@ -182,13 +201,43 @@ namespace mathexpr {
                         tokens.push_back({ TokenType::Minus, "-" });
                         break;
                     case '*':
-                        tokens.push_back({ TokenType::Star, "*" });
+                        if (i + 1 < input.size() && input[i + 1] == '*') {
+                            tokens.push_back({ TokenType::StarStar, "**" });
+                            ++i;
+                        } else {
+                            tokens.push_back({ TokenType::Star, "*" });
+                        }
                         break;
                     case '/':
                         tokens.push_back({ TokenType::Slash, "/" });
                         break;
                     case '^':
                         tokens.push_back({ TokenType::Caret, "^" });
+                        break;
+                    case '&':
+                        tokens.push_back({ TokenType::Ampersand, "&" });
+                        break;
+                    case '|':
+                        tokens.push_back({ TokenType::Pipe, "|" });
+                        break;
+                    case '~':
+                        tokens.push_back({ TokenType::Tilde, "~" });
+                        break;
+                    case '<':
+                        if (i + 1 < input.size() && input[i + 1] == '<') {
+                            tokens.push_back({ TokenType::LShift, "<<" });
+                            ++i;
+                        } else {
+                            throw std::runtime_error(std::string("Unexpected character: '") + input[i] + "'");
+                        }
+                        break;
+                    case '>':
+                        if (i + 1 < input.size() && input[i + 1] == '>') {
+                            tokens.push_back({ TokenType::RShift, ">>" });
+                            ++i;
+                        } else {
+                            throw std::runtime_error(std::string("Unexpected character: '") + input[i] + "'");
+                        }
                         break;
                     case '(':
                         tokens.push_back({ TokenType::LParen, "(" });
@@ -219,6 +268,12 @@ namespace mathexpr {
             Div,
             Pow,
             Neg,  // Negate top of stack
+            BitAnd,
+            BitOr,
+            BitXor,
+            BitNot,
+            ShiftLeft,
+            ShiftRight,
         };
 
         struct Instruction {
@@ -274,7 +329,45 @@ namespace mathexpr {
                 throw std::runtime_error("Unknown symbol: '" + name + "'");
             }
 
-            void expression() {
+            void expression() { bitwise_or(); }
+
+            void bitwise_or() {
+                bitwise_xor();
+                while (peek().type == TokenType::Pipe) {
+                    advance();
+                    bitwise_xor();
+                    emit(OpCode::BitOr);
+                }
+            }
+
+            void bitwise_xor() {
+                bitwise_and();
+                while (peek().type == TokenType::Caret) {
+                    advance();
+                    bitwise_and();
+                    emit(OpCode::BitXor);
+                }
+            }
+
+            void bitwise_and() {
+                shift();
+                while (peek().type == TokenType::Ampersand) {
+                    advance();
+                    shift();
+                    emit(OpCode::BitAnd);
+                }
+            }
+
+            void shift() {
+                additive();
+                while (peek().type == TokenType::LShift || peek().type == TokenType::RShift) {
+                    auto op = advance().type;
+                    additive();
+                    emit(op == TokenType::LShift ? OpCode::ShiftLeft : OpCode::ShiftRight);
+                }
+            }
+
+            void additive() {
                 term();
                 while (peek().type == TokenType::Plus || peek().type == TokenType::Minus) {
                     auto op = advance().type;
@@ -294,25 +387,32 @@ namespace mathexpr {
 
             void exponent() {
                 unary();
-                if (match(TokenType::Caret)) {
+                if (match(TokenType::StarStar)) {
                     exponent();
                     emit(OpCode::Pow);
                 }
             }
 
             void unary() {
-                if (peek().type == TokenType::Minus) {
-                    advance();
-                    unary();
-                    emit(OpCode::Neg);
-                    return;
+                switch (peek().type) {
+                    case TokenType::Minus:
+                        advance();
+                        unary();
+                        emit(OpCode::Neg);
+                        return;
+                    case TokenType::Plus:
+                        advance();
+                        unary();
+                        return;
+                    case TokenType::Tilde:
+                        advance();
+                        unary();
+                        emit(OpCode::BitNot);
+                        return;
+                    default:
+                        primary();
+                        return;
                 }
-                if (peek().type == TokenType::Plus) {
-                    advance();
-                    unary();
-                    return;
-                }
-                primary();
             }
 
             void primary() {
@@ -426,6 +526,39 @@ namespace mathexpr {
                     case OpCode::Neg:
                         stack.back() = -stack.back();
                         break;
+                    case OpCode::BitAnd: {
+                        auto b = static_cast<Int>(stack.back());
+                        stack.pop_back();
+                        stack.back() = static_cast<Number>(static_cast<Int>(stack.back()) & b);
+                        break;
+                    }
+                    case OpCode::BitOr: {
+                        auto b = static_cast<Int>(stack.back());
+                        stack.pop_back();
+                        stack.back() = static_cast<Number>(static_cast<Int>(stack.back()) | b);
+                        break;
+                    }
+                    case OpCode::BitXor: {
+                        auto b = static_cast<Int>(stack.back());
+                        stack.pop_back();
+                        stack.back() = static_cast<Number>(static_cast<Int>(stack.back()) ^ b);
+                        break;
+                    }
+                    case OpCode::BitNot:
+                        stack.back() = static_cast<Number>(~static_cast<Int>(stack.back()));
+                        break;
+                    case OpCode::ShiftLeft: {
+                        auto b = static_cast<Int>(stack.back());
+                        stack.pop_back();
+                        stack.back() = static_cast<Number>(static_cast<Int>(stack.back()) << b);
+                        break;
+                    }
+                    case OpCode::ShiftRight: {
+                        auto b = static_cast<Int>(stack.back());
+                        stack.pop_back();
+                        stack.back() = static_cast<Number>(static_cast<Int>(stack.back()) >> b);
+                        break;
+                    }
                 }
             }
             return stack.back();
