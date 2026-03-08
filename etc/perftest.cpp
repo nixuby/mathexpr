@@ -27,8 +27,9 @@ void test0() {
     uint64_t result = 0;
 
     auto start = std::chrono::high_resolution_clock::now();
+    mathexpr::Expression expr = ctx.compile("2 + 2");
     for (int i = 0; i < I; ++i) {
-        result += ctx.evaluate("2 + 2");
+        result += expr.evaluate();
     }
     auto end = std::chrono::high_resolution_clock::now();
 
@@ -48,8 +49,9 @@ void test1() {
     ctx.define("y", 3);
     ctx.define("z", 4);
     ctx.define("fn", [](double a, double b, double c) { return a + b * c; });
+    mathexpr::Expression expr = ctx.compile("fn(x, y, z)");
     for (int i = 0; i < I; ++i) {
-        result += ctx.evaluate("fn(x, y, z)");
+        result += expr.evaluate();
     }
     auto end = std::chrono::high_resolution_clock::now();
 
@@ -66,8 +68,9 @@ void test2() {
 
     auto start = std::chrono::high_resolution_clock::now();
     ctx.define("x", 45);
+    mathexpr::Expression expr = ctx.compile("sin(x)");
     for (int i = 0; i < I; ++i) {
-        result += ctx.evaluate("sin(x)");
+        result += expr.evaluate();
     }
     auto end = std::chrono::high_resolution_clock::now();
 
