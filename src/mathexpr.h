@@ -153,6 +153,17 @@ namespace mathexpr {
             Tilde,
             LShift,
             RShift,
+            AmpAmp,
+            PipePipe,
+            Bang,
+            EqEq,
+            BangEq,
+            Less,
+            Greater,
+            LessEq,
+            GreaterEq,
+            Question,
+            Colon,
             LParen,
             RParen,
             Comma,
@@ -215,10 +226,36 @@ namespace mathexpr {
                         tokens.push_back({ TokenType::Caret, "^" });
                         break;
                     case '&':
-                        tokens.push_back({ TokenType::Ampersand, "&" });
+                        if (i + 1 < input.size() && input[i + 1] == '&') {
+                            tokens.push_back({ TokenType::AmpAmp, "&&" });
+                            ++i;
+                        } else {
+                            tokens.push_back({ TokenType::Ampersand, "&" });
+                        }
                         break;
                     case '|':
-                        tokens.push_back({ TokenType::Pipe, "|" });
+                        if (i + 1 < input.size() && input[i + 1] == '|') {
+                            tokens.push_back({ TokenType::PipePipe, "||" });
+                            ++i;
+                        } else {
+                            tokens.push_back({ TokenType::Pipe, "|" });
+                        }
+                        break;
+                    case '!':
+                        if (i + 1 < input.size() && input[i + 1] == '=') {
+                            tokens.push_back({ TokenType::BangEq, "!=" });
+                            ++i;
+                        } else {
+                            tokens.push_back({ TokenType::Bang, "!" });
+                        }
+                        break;
+                    case '=':
+                        if (i + 1 < input.size() && input[i + 1] == '=') {
+                            tokens.push_back({ TokenType::EqEq, "==" });
+                            ++i;
+                        } else {
+                            throw std::runtime_error(std::string("Unexpected character: '") + input[i] + "'");
+                        }
                         break;
                     case '~':
                         tokens.push_back({ TokenType::Tilde, "~" });
@@ -227,17 +264,29 @@ namespace mathexpr {
                         if (i + 1 < input.size() && input[i + 1] == '<') {
                             tokens.push_back({ TokenType::LShift, "<<" });
                             ++i;
+                        } else if (i + 1 < input.size() && input[i + 1] == '=') {
+                            tokens.push_back({ TokenType::LessEq, "<=" });
+                            ++i;
                         } else {
-                            throw std::runtime_error(std::string("Unexpected character: '") + input[i] + "'");
+                            tokens.push_back({ TokenType::Less, "<" });
                         }
                         break;
                     case '>':
                         if (i + 1 < input.size() && input[i + 1] == '>') {
                             tokens.push_back({ TokenType::RShift, ">>" });
                             ++i;
+                        } else if (i + 1 < input.size() && input[i + 1] == '=') {
+                            tokens.push_back({ TokenType::GreaterEq, ">=" });
+                            ++i;
                         } else {
-                            throw std::runtime_error(std::string("Unexpected character: '") + input[i] + "'");
+                            tokens.push_back({ TokenType::Greater, ">" });
                         }
+                        break;
+                    case '?':
+                        tokens.push_back({ TokenType::Question, "?" });
+                        break;
+                    case ':':
+                        tokens.push_back({ TokenType::Colon, ":" });
                         break;
                     case '(':
                         tokens.push_back({ TokenType::LParen, "(" });
@@ -274,6 +323,16 @@ namespace mathexpr {
             BitNot,
             ShiftLeft,
             ShiftRight,
+            LogAnd,
+            LogOr,
+            LogNot,
+            CmpEq,
+            CmpNe,
+            CmpLt,
+            CmpGt,
+            CmpLe,
+            CmpGe,
+            Ternary,  // Pop condition, if-true, if-false; push result
         };
 
         struct Instruction {
@@ -329,7 +388,35 @@ namespace mathexpr {
                 throw std::runtime_error("Unknown symbol: '" + name + "'");
             }
 
-            void expression() { bitwise_or(); }
+            void expression() { ternary(); }
+
+            void ternary() {
+                logical_or();
+                if (match(TokenType::Question)) {
+                    ternary();
+                    expect(TokenType::Colon, "Expected ':' in ternary expression");
+                    ternary();
+                    emit(OpCode::Ternary);
+                }
+            }
+
+            void logical_or() {
+                logical_and();
+                while (peek().type == TokenType::PipePipe) {
+                    advance();
+                    logical_and();
+                    emit(OpCode::LogOr);
+                }
+            }
+
+            void logical_and() {
+                bitwise_or();
+                while (peek().type == TokenType::AmpAmp) {
+                    advance();
+                    bitwise_or();
+                    emit(OpCode::LogAnd);
+                }
+            }
 
             void bitwise_or() {
                 bitwise_xor();
@@ -350,11 +437,45 @@ namespace mathexpr {
             }
 
             void bitwise_and() {
-                shift();
+                equality();
                 while (peek().type == TokenType::Ampersand) {
                     advance();
-                    shift();
+                    equality();
                     emit(OpCode::BitAnd);
+                }
+            }
+
+            void equality() {
+                relational();
+                while (peek().type == TokenType::EqEq || peek().type == TokenType::BangEq) {
+                    auto op = advance().type;
+                    relational();
+                    emit(op == TokenType::EqEq ? OpCode::CmpEq : OpCode::CmpNe);
+                }
+            }
+
+            void relational() {
+                shift();
+                while (peek().type == TokenType::Less || peek().type == TokenType::Greater ||
+                       peek().type == TokenType::LessEq || peek().type == TokenType::GreaterEq) {
+                    auto op = advance().type;
+                    shift();
+                    switch (op) {
+                        case TokenType::Less:
+                            emit(OpCode::CmpLt);
+                            break;
+                        case TokenType::Greater:
+                            emit(OpCode::CmpGt);
+                            break;
+                        case TokenType::LessEq:
+                            emit(OpCode::CmpLe);
+                            break;
+                        case TokenType::GreaterEq:
+                            emit(OpCode::CmpGe);
+                            break;
+                        default:
+                            break;
+                    }
                 }
             }
 
@@ -408,6 +529,11 @@ namespace mathexpr {
                         advance();
                         unary();
                         emit(OpCode::BitNot);
+                        return;
+                    case TokenType::Bang:
+                        advance();
+                        unary();
+                        emit(OpCode::LogNot);
                         return;
                     default:
                         primary();
@@ -559,6 +685,65 @@ namespace mathexpr {
                         stack.back() = static_cast<Number>(static_cast<Int>(stack.back()) >> b);
                         break;
                     }
+                    case OpCode::LogAnd: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() = (stack.back() != 0.0 && b != 0.0) ? 1.0 : 0.0;
+                        break;
+                    }
+                    case OpCode::LogOr: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() = (stack.back() != 0.0 || b != 0.0) ? 1.0 : 0.0;
+                        break;
+                    }
+                    case OpCode::LogNot:
+                        stack.back() = (stack.back() == 0.0) ? 1.0 : 0.0;
+                        break;
+                    case OpCode::CmpEq: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() = (stack.back() == b) ? 1.0 : 0.0;
+                        break;
+                    }
+                    case OpCode::CmpNe: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() = (stack.back() != b) ? 1.0 : 0.0;
+                        break;
+                    }
+                    case OpCode::CmpLt: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() = (stack.back() < b) ? 1.0 : 0.0;
+                        break;
+                    }
+                    case OpCode::CmpGt: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() = (stack.back() > b) ? 1.0 : 0.0;
+                        break;
+                    }
+                    case OpCode::CmpLe: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() = (stack.back() <= b) ? 1.0 : 0.0;
+                        break;
+                    }
+                    case OpCode::CmpGe: {
+                        auto b = stack.back();
+                        stack.pop_back();
+                        stack.back() = (stack.back() >= b) ? 1.0 : 0.0;
+                        break;
+                    }
+                    case OpCode::Ternary: {
+                        auto if_false = stack.back();
+                        stack.pop_back();
+                        auto if_true = stack.back();
+                        stack.pop_back();
+                        stack.back() = (stack.back() != 0.0) ? if_true : if_false;
+                        break;
+                    }
                 }
             }
             return stack.back();
@@ -663,6 +848,8 @@ namespace mathexpr {
             // Constants
             define("pi", std::numbers::pi);
             define("e", std::numbers::e);
+            define("true", 1.0);
+            define("false", 0.0);
 
             // Unary functions
             define<1>("sin", [](auto x) { return std::sin(x); });
