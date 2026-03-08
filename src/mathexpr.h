@@ -1,4 +1,4 @@
-// "mathexpr" (c) 2026 Nixuby (https://nixuby.com)
+// "mathexpr" v0.1 (c) 2026 Nixuby (https://nixuby.com)
 // License: MIT (https://opensource.org/license/MIT)
 // Math expression evaluation library
 // C++20, header-only, no dependencies
@@ -19,6 +19,13 @@
 #include <vector>
 
 namespace mathexpr {
+    namespace version {
+        inline int constexpr ID = 0;
+        inline int constexpr MAJOR = 0;
+        inline int constexpr MINOR = 1;
+        inline int constexpr PATCH = 0;
+    }
+
     using Number = double;  // Type used for numbers in expressions
 
     namespace detail {
